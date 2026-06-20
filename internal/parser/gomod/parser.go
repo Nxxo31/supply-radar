@@ -1,8 +1,8 @@
-// Package gomod implements a parser for Go module files (go.mod).
 package gomod
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -38,21 +38,20 @@ func (p *Parser) Detect(path string) (bool, string) {
 	return false, ""
 }
 
-// Parse extracts dependencies from go.mod using line-by-line parsing
-// (zero external dependencies).
+// Parse extracts dependencies from go.mod and resolves exact versions
+// from go.sum when available.
 //
-// Returns an empty slice (no error) when the module has no dependencies.
-// This handles freshly initialized Go modules that have no require blocks.
+// Uses go.mod as the source of truth for declared dependencies,
+// and go.sum for resolved exact versions and tamper detection.
 func (p *Parser) Parse(path string) ([]dependency.Dependency, error) {
 	manifest := filepath.Join(path, "go.mod")
-	f, err := os.Open(manifest)
+	data, err := os.ReadFile(manifest)
 	if err != nil {
 		return nil, fmt.Errorf("opening go.mod: %w", err)
 	}
-	defer f.Close()
 
 	var deps []dependency.Dependency
-	scanner := bufio.NewScanner(f)
+	scanner := bufio.NewScanner(bytes.NewReader(data))
 
 	// State machine: we only care about require blocks.
 	inRequire := false
@@ -62,7 +61,7 @@ func (p *Parser) Parse(path string) ([]dependency.Dependency, error) {
 		trimmed := strings.TrimSpace(line)
 
 		// Skip blank lines and comments.
-		if trimmed == "" || strings.HasPrefix(trimmed, "//") {
+		if trimmed == "" || strings.TrimPrefix(trimmed, "//") == "" {
 			continue
 		}
 
@@ -114,10 +113,15 @@ func (p *Parser) Parse(path string) ([]dependency.Dependency, error) {
 		return nil, fmt.Errorf("reading go.mod: %w", err)
 	}
 
-	// Empty deps is a valid state (freshly initialized modules).
-	return deps, nil
-}
+	// Resolve to exact versions from go.sum if available.
+	resolved, err := ResolveVersionsWithGoSum(deps, path)
+	if err != nil {
+		// Log but continue with go.mod versions.
+		return deps, nil
+	}
 
+	return resolved, nil
+}
 func buildDep(name, version, path string, direct bool) dependency.Dependency {
 	// Strip Go module version prefix (v4.0.0 -> 4.0.0) for OSV compatibility.
 	cleanVersion := strings.TrimPrefix(version, "v")

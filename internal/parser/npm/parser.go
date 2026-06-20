@@ -46,9 +46,11 @@ type npmPackage struct {
 	DevDependencies map[string]string `json:"devDependencies"`
 }
 
-// Parse extracts dependencies from package.json.
-// Uses package.json dependencies as source of truth (lock files are large and
-// better handled via a specialized parser for production use).
+// Parse extracts dependencies from package.json and resolves exact versions
+// from package-lock.json when available.
+//
+// Uses package.json as the source of truth for declared dependencies,
+// and package-lock.json for resolved exact versions.
 func (p *Parser) Parse(path string) ([]dependency.Dependency, error) {
 	manifest := filepath.Join(path, "package.json")
 	data, err := os.ReadFile(manifest)
@@ -76,8 +78,14 @@ func (p *Parser) Parse(path string) ([]dependency.Dependency, error) {
 		deps = append(deps, dep)
 	}
 
-	// Empty deps is a valid state (newly initialized package).
-	return deps, nil
+	// Resolve to exact versions from lockfile if available.
+	resolved, err := ResolveVersions(deps, path)
+	if err != nil {
+		// Log but continue with package.json versions.
+		return deps, nil
+	}
+
+	return resolved, nil
 }
 
 func buildDep(name, version, path string, direct bool) dependency.Dependency {

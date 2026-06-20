@@ -1,0 +1,15 @@
+{
+  "name": "express-sample-app",
+  "version": "1.0.0",
+  "description": "Sample app with package-lock.json for resolving exact versions",
+  "main": "index.js",
+  "dependencies": {
+    "express": "^4.18.2",
+    "lodash": "^4.17.20",
+    "axios": "^0.27.2",
+    "minimist": "^1.2.5"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}

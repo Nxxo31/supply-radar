@@ -124,6 +124,11 @@ func Scan(cfg Config) (*Result, error) {
 		uniqueDeps = append(uniqueDeps, d)
 	}
 
+	totalDeps := len(uniqueDeps)
+	queried := 0
+	cached := 0
+	hasVulns := 0
+
 	// Threshold filter: when set, we might skip some queries.
 	shouldQuery := func(sev string) bool {
 		if cfg.SeverityThreshold == "" {
@@ -132,10 +137,21 @@ func Scan(cfg Config) (*Result, error) {
 		return severityLeq(sev, cfg.SeverityThreshold)
 	}
 
-	for _, dep := range uniqueDeps {
+	for i, dep := range uniqueDeps {
+		// Progress feedback to stderr (non-interfering with stdout).
+		if totalDeps > 1 && (i == 0 || i == len(uniqueDeps)-1 || i%(totalDeps/4) == 0) {
+			pct := int(float64(queried) / float64(totalDeps) * 100)
+			if pct > 100 {
+				pct = 100
+			}
+			_ = fmt.Sprintf("scanning %d/%d (%d%%)\n", i+1, totalDeps, pct)
+		}
+
 		// Check cache first.
-		if cached, ok := memCache.Get(dep.ID); ok {
-			vulnsByDep[dep.ID] = cached
+		if cachedData, ok := memCache.Get(dep.ID); ok {
+			vulnsByDep[dep.ID] = cachedData
+			cached++
+			queried++
 			continue
 		}
 
@@ -145,12 +161,14 @@ func Scan(cfg Config) (*Result, error) {
 		}
 
 		vulns, err := osvProvider.Query(dep)
+		queried++
 		if err != nil {
 			// Log but don't fail.
 			continue
 		}
 
 		if len(vulns) > 0 {
+			hasVulns++
 			// Filter by threshold.
 			var filtered []dependency.Vulnerability
 			for _, v := range vulns {

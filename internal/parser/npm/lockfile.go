@@ -13,32 +13,32 @@ import (
 
 // lockfilePackage represents a package entry in the packages dictionary.
 type lockfilePackage struct {
-	Version      string `json:"version"`
-	Resolved     string `json:"resolved,omitempty"`
-	Integrity    string `json:"integrity,omitempty"`
+	Version      string   `json:"version"`
+	Resolved     string   `json:"resolved,omitempty"`
+	Integrity    string   `json:"integrity,omitempty"`
 	Dependencies []string `json:"dependencies,omitempty"`
-	Dev          bool   `json:"dev,omitempty"`
-	DevOptional  bool   `json:"devOptional,omitempty"`
-	Optional     bool   `json:"optional,omitempty"`
+	Dev          bool     `json:"dev,omitempty"`
+	DevOptional  bool     `json:"devOptional,omitempty"`
+	Optional     bool     `json:"optional,omitempty"`
 }
 
 // packageLock represents the lockfile structure (v3).
 type packageLock struct {
-	LockfileVersion int                      `json:"lockfileVersion"`
-	Name            string                   `json:"name"`
-	Version         string                   `json:"version"`
+	LockfileVersion int                         `json:"lockfileVersion"`
+	Name            string                      `json:"name"`
+	Version         string                      `json:"version"`
 	Packages        map[string]*lockfilePackage `json:"packages"`
-	Dependencies    map[string]*lockfileDep  `json:"dependencies,omitempty"`
+	Dependencies    map[string]*lockfileDep     `json:"dependencies,omitempty"`
 }
 
 // lockfileDep represents a dependency in the legacy v2 dependencies format.
 type lockfileDep struct {
-	Version      string                 `json:"version"`
-	Resolved     string                 `json:"resolved,omitempty"`
-	Integrity    string                 `json:"integrity,omitempty"`
-	Dependencies map[string]string      `json:"dependencies,omitempty"`
-	Dev          bool                   `json:"dev,omitempty"`
-	Optional     bool                   `json:"optional,omitempty"`
+	Version      string            `json:"version"`
+	Resolved     string            `json:"resolved,omitempty"`
+	Integrity    string            `json:"integrity,omitempty"`
+	Dependencies map[string]string `json:"dependencies,omitempty"`
+	Dev          bool              `json:"dev,omitempty"`
+	Optional     bool              `json:"optional,omitempty"`
 }
 
 // ParseLockfile extracts the exact resolved versions from package-lock.json.

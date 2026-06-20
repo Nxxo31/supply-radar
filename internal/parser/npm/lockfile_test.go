@@ -219,7 +219,7 @@ func TestVerifyLockfile_HashValidation(t *testing.T) {
     "node_modules/good": {
       "version": "1.0.0",
       "resolved": "https://registry.npmjs.org/good/-/good-1.0.0.tgz",
-      "integrity": "` + validHash + `"
+      "integrity": "`+validHash+`"
     },
     "node_modules/bad": {
       "version": "1.0.0",
@@ -239,7 +239,7 @@ func TestVerifyLockfile_HashValidation(t *testing.T) {
 	if len(results) != 2 {
 		t.Fatalf("Expected 2 results, got %d", len(results))
 	}
-	
+
 	if results["good"] != true {
 		t.Error("Expected good hash to be valid")
 	}

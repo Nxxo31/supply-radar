@@ -15,6 +15,7 @@ import (
 	"github.com/nxxo31/supply-radar/internal/parser/npm"
 	"github.com/nxxo31/supply-radar/internal/reporter"
 	"github.com/nxxo31/supply-radar/internal/reporter/markdown"
+	"github.com/nxxo31/supply-radar/internal/reporter/sarif"
 	"github.com/nxxo31/supply-radar/internal/reporter/table"
 	"github.com/nxxo31/supply-radar/internal/vulnerability/osv"
 )
@@ -226,6 +227,8 @@ func WriteReport(result dependency.AnalysisResult, format, outputPath string) er
 		rep = table.New()
 	case "markdown":
 		rep = markdown.New()
+	case "sarif":
+		rep = sarif.New()
 	default:
 		return fmt.Errorf("unsupported format: %s", format)
 	}

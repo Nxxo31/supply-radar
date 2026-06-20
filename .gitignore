@@ -4,8 +4,11 @@
 *.dll
 *.so
 *.dylib
+# supply-radar binaries
 supply-radar
 supply-radar.exe
+supply-radar-test
+supply-radar-bin
 
 # Test binary
 *.test

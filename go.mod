@@ -1,3 +1,3 @@
-module github.com/sebas/supply-radar
+module github.com/nxxo31/supply-radar
 
-go 1.22
+go 1.23

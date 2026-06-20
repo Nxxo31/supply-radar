@@ -1,7 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"github.com/nxxo31/supply-radar/cmd/supply-radar"
+)
 
 func main() {
-	fmt.Println("supply-radar - Supply chain security scanner")
+	cmd.Main()
 }

@@ -1,5 +1,200 @@
 # supply-radar
 
-> Los ataques a la cadena de suministro de software (paquetes npm/PyPI comprometidos) crecieron drásticamente. Las herramientas de SCA existentes avisan de CVEs conocidos pero no de dependencias "muertas" o con patrones de riesgo.
+> CLI open source para análisis de dependencias y detección de riesgos de software supply chain.
 
-Para más detalles, consulta [PROJECT.md](PROJECT.md).
+`supply-radar` escanea proyectos Go y Node.js, analiza sus archivos de manifiesto, consulta la [base de datos OSV](https://osv.dev) en busca de vulnerabilidades conocidas y produce un reporte claro y ejecutable en segundos.
+
+Sin SaaS. Sin dashboards. Sin base de datos. Sin envío de dependencias a servidores externos.
+
+---
+
+## Por qué
+
+La crisis de la cadena de suministro de software es real:
+
+- **+67%** de dependencias no revisadas en 2024-2025 (Sonatype).
+- Ataques a supply chain crecieron exponencialmente post-Log4j (2021) y XZ backdoor (2024).
+- Vulnerabilidades criticas tardan **500+ dias** en resolverse.
+- Equipos carecen de visibilidad de que hay realmente en su proyecto.
+
+`supply-radar` responde las preguntas basicas que un desarrollador necesita responder hoy:
+
+1. Que dependencias usa realmente mi proyecto? (directas y transitivas)
+2. Hay vulnerabilidades conocidas para esas versiones?
+3. Cual es el nivel de riesgo agregado?
+4. En que version se parcheo cada problema?
+
+---
+
+## Instalacion
+
+Desde el codigo fuente:
+
+    git clone https://github.com/Nxxo31/supply-radar.git
+    cd supply-radar
+    go build -o supply-radar .
+    ./supply-radar --version
+
+Requisitos: Go 1.23+.
+
+---
+
+## Uso
+
+    # Escanear el directorio actual (detecta automaticamente Go o Node.js)
+    supply-radar .
+
+    # Escanear un proyecto especifico en formato tabla
+    supply-radar ./mi-proyecto
+
+    # Reporte en JSON para integracion con CI/CD
+    supply-radar --format json --output report.json ./mi-proyecto
+
+    # Solo vulnerabilidades criticas (util para CI gates)
+    supply-radar --threshold CRITICAL ./mi-proyecto
+
+    # Falla si se encuentra cualquier vulnerabilidad
+    supply-radar --fail ./mi-proyecto
+
+    # Modo offline (usa solo cache, sin llamadas de red)
+    supply-radar --offline ./mi-proyecto
+
+    # Resumen compacto en JSON para CI gates rapidos
+    supply-radar --format json-summary ./mi-proyecto
+
+### Flags
+
+  --path               Ruta del proyecto (default: .)
+  --format             table | json | json-summary (default: table)
+  --output             Archivo de salida o - para stdout (default: -)
+  --threshold          CRITICAL | HIGH | MEDIUM | LOW
+  --fail               Sale con codigo 1 si hay vulnerabilidades
+  --offline            Solo datos cacheados, sin red
+  --cache-ttl-hours    TTL del cache en horas (default: 24)
+  --version            Imprime version y sale
+  --help               Muestra ayuda
+
+---
+
+## Ecosistemas soportados
+
+  Go     go.mod
+  npm    package.json
+
+---
+
+## Variables de entorno
+
+  SUPPLY_RADAR_FORMAT
+  SUPPLY_RADAR_OUTPUT
+  SUPPLY_RADAR_THRESHOLD
+  SUPPLY_RADAR_FAIL_ON_VULNS    (true para activar)
+  SUPPLY_RADAR_OFFLINE          (true para activar)
+
+---
+
+## Ejemplo de salida (tabla)
+
+  supply-radar ./tests/fixtures/node/express-app
+
+   -- supply-radar v0.1.0 ---
+   Project:  express-app
+   Duration: 2121ms
+   ---
+
+    Found 29 vulnerabilities in 4 dependencies -- CRITICAL issues require immediate action
+     CRITICAL: 1  |  HIGH: 12  |  MEDIUM: 14  |  LOW: 2
+     Risk Score: 10.0/10
+
+   Vulnerable Dependencies:
+   PACKAGE              SEVERITY   CVSS
+   minimist             CRITICAL
+     GHSA-xvch-5gv4-984h
+   axios                HIGH
+     21 vulnerabilities
+   lodash               HIGH
+     5 vulnerabilities
+   express              MEDIUM
+     2 vulnerabilities
+
+---
+
+## Como funciona
+
+   [manifest files] -> Parser -> [Dependencies] -> Vulnerability Provider (OSV) -> [Vulns]
+                                                              |
+                                                    Risk score + summary
+                                                              |
+                                                    Reporter -> table/json
+
+1. Deteccion: busca go.mod o package.json en la ruta indicada.
+2. Parsing: extrae dependencias (directas e indirectas) con cero deps externas.
+3. Consultas OSV: cada dependencia se consulta en api.osv.dev/v1/query en paralelo.
+4. Cache: respuestas de OSV se cachean en memoria (TTL configurable).
+5. Reporte: se calcula score de riesgo y se serializa en el formato elegido.
+
+No se envian dependencias a nuestros servidores: solo se hacen POSTs a api.osv.dev
+con package y version. En modo --offline no se hace ninguna llamada de red.
+
+---
+
+## Arquitectura
+
+   cmd/supply-radar/         CLI entry point + flags
+     internal/
+       scanner/              Orquestador: parser -> vulns -> report
+       parser/               Interfaces + registry
+         gomod/              Parsea go.mod
+         npm/                Parsea package.json
+       vulnerability/        Contrato Provider
+         osv/                Cliente OSV (HTTP + parsing)
+       reporter/             Reporters
+         table/              Terminal output
+       dependency/           Tipos del dominio
+       cache/                Cache in-memory con TTL
+       config/               Env vars
+
+Cada paquete tiene una responsabilidad unica y se puede extender sin tocar el resto.
+
+### Anadir un ecosistema nuevo
+
+1. Crear internal/parser/mi-ecosistema/parser.go implementando parser.Parser.
+2. Registrarlo en internal/scanner/scanner.go.
+3. Si el ecosistema tiene un equivalente OSV (pypi, maven, crates.io), solo
+   hay que mapear el ecosystem en internal/vulnerability/osv/client.go.
+
+El resto del pipeline (cache, reporter, exit codes) funciona sin cambios.
+
+---
+
+## Roadmap
+
+MVP V1 (actual): scan, OSV queries, reporte tabla/JSON, CI flag.
+V1.1: soporte package-lock.json y go.sum para versiones exactas.
+V1.2: SBOM export en formatos SPDX y CycloneDX.
+V2.0: mas proveedores de vulns (NVD, GHSA directo), paquete PyPI/Maven.
+
+Ver PROJECT.md para la vision completa.
+
+---
+
+## Contribuir
+
+PRs bienvenidos. Antes de abrir uno:
+
+1. Asegurate de que go test ./... pase.
+2. Añade tests para cualquier logica nueva.
+3. gofmt -d . no debe reportar diferencias.
+4. Manten el MVP simple: nada de SaaS, dashboards, o DBs externas.
+
+---
+
+## Licencia
+
+MIT. Ver LICENSE.
+
+---
+
+## Autor
+
+Sebastian [Nxxo31] - proyecto de ingenieria open source.

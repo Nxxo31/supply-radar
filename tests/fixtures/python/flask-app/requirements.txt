@@ -1,0 +1,13 @@
+# Python dependencies for Flask application
+# Production dependencies
+flask==3.0.0
+requests>=2.31.0
+sqlalchemy>=2.0.0,<3.0.0
+
+# Development dependencies
+pytest>=7.4.0
+pytest-cov>=4.1.0
+
+# Comments should be ignored
+# Lines starting with dashes should be ignored
+--extra-index-url https://example.com/simple

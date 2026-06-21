@@ -13,6 +13,7 @@ import (
 	"github.com/nxxo31/supply-radar/internal/parser"
 	"github.com/nxxo31/supply-radar/internal/parser/gomod"
 	"github.com/nxxo31/supply-radar/internal/parser/npm"
+	"github.com/nxxo31/supply-radar/internal/parser/pypi"
 	"github.com/nxxo31/supply-radar/internal/reporter"
 	"github.com/nxxo31/supply-radar/internal/reporter/markdown"
 	"github.com/nxxo31/supply-radar/internal/reporter/sarif"
@@ -72,6 +73,7 @@ func Scan(cfg Config) (*Result, error) {
 	parsers := []parser.Parser{
 		gomod.New(),
 		npm.New(),
+		pypi.New(),
 	}
 
 	var allDeps []dependency.Dependency

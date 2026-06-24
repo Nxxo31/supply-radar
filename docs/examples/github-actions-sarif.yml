@@ -1,0 +1,56 @@
+# GitHub Actions workflow for supply-radar with SARIF output
+
+name: Supply Chain Security Scan
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  schedule:
+    - cron: '0 9 * * 1'  # Every Monday at 9 AM
+
+jobs:
+  supply-chain-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      # Required to upload SARIF results to GitHub Code Scanning
+      security-events: write
+      # Only needed if you have a private repository and need to checkout
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Go (if using Go modules)
+        if: contains(github.workspace, 'go.mod') || contains(github.workspace, 'go.sum')
+        uses: actions/setup-go@v4
+        with:
+          go-version: '>=1.21'
+
+      - name: Install Node.js (if using npm/yarn)
+        if: contains(github.workspace, 'package.json') || contains(github.workspace, 'yarn.lock') || contains(github.workspace, 'package-lock.json')
+        uses: actions/setup-node@v4
+        with:
+          node-version: '>=18'
+          cache: 'npm'
+
+      - name: Install Python (if using PyPI)
+        if: contains(github.workspace, 'requirements.txt') || contains(github.workspace, 'pyproject.toml')
+        uses: actions/setup-python@v5
+        with:
+          python-version: '>=3.10'
+          cache: 'pip'
+
+      - name: Run supply-radar
+        uses: docker://nxxo31/supply-radar:latest
+        with:
+          args: --format sarif --output supply-radar-results.sarif .
+
+      - name: Upload SARIF results to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: supply-radar-results.sarif
+          # Optional: categorize the results
+          category: supply-chain-security

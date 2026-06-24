@@ -143,11 +143,11 @@ func Scan(cfg Config) (*Result, error) {
 	for i, dep := range uniqueDeps {
 		// Progress feedback to stderr (non-interfering with stdout).
 		if totalDeps > 1 && (i == 0 || i == len(uniqueDeps)-1 || i%(totalDeps/4) == 0) {
-			pct := int(float64(queried) / float64(totalDeps) * 100)
+			pct := int(float64(i+1) / float64(totalDeps) * 100)
 			if pct > 100 {
 				pct = 100
 			}
-			_ = fmt.Sprintf("scanning %d/%d (%d%%)\n", i+1, totalDeps, pct)
+			fmt.Fprintf(os.Stderr, "\rscanning %d/%d (%d%%)", i+1, totalDeps, pct)
 		}
 
 		// Check cache first.
@@ -184,6 +184,11 @@ func Scan(cfg Config) (*Result, error) {
 		} else {
 			memCache.Set(dep.ID, nil)
 		}
+	}
+
+	// Clear progress line.
+	if totalDeps > 1 {
+		fmt.Fprintln(os.Stderr, "")
 	}
 
 	// 3. Build AnalysisResult.

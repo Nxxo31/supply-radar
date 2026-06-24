@@ -41,15 +41,15 @@ func (r *Reporter) Generate(result dependency.AnalysisResult, w io.Writer) error
 	// Summary.
 	fmt.Fprintln(w, "## Summary")
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "| Severity | Count |")
-	fmt.Fprintln(w, "|----------|-------|")
+	fmt.Fprintln(w, "| Metric | Value |")
+	fmt.Fprintln(w, "|--------|-------:|")
 	fmt.Fprintf(w, "| Total dependencies | %d |\n", result.Summary.TotalDependencies)
 	fmt.Fprintf(w, "| Vulnerable deps | %d |\n", result.Summary.VulnerableDeps)
 	fmt.Fprintf(w, "| Critical | %d |\n", result.Summary.Critical)
 	fmt.Fprintf(w, "| High | %d |\n", result.Summary.High)
 	fmt.Fprintf(w, "| Medium | %d |\n", result.Summary.Medium)
 	fmt.Fprintf(w, "| Low | %d |\n", result.Summary.Low)
-	fmt.Fprintf(w, "| **Total** | **%d** |\n", result.Summary.TotalVulns)
+	fmt.Fprintf(w, "| **Total vulnerabilities** | **%d** |\n", result.Summary.TotalVulns)
 	fmt.Fprintf(w, "| **Risk score** | **%.1f/10** |\n", result.RiskScore)
 	fmt.Fprintln(w)
 

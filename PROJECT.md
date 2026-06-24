@@ -4,12 +4,13 @@ Supply Chain Security Analysis CLI Tool
 
 ## Status
 
-MVP V1 funcional. Detecta dependencias Go (go.mod) y npm (package.json), consulta
-vulnerabilidades en OSV, reporta en tabla/JSON/json-summary. Tests y CI en verde.
+MVP V1 y V1.1 completados. Detecta dependencias Go (go.mod) y npm (package.json),
+consulta vulnerabilidades en OSV, soporta lockfiles (package-lock.json, go.sum),
+reporta en tabla/JSON/json-summary/markdown. Tests y CI en verde.
 
 ## Sprint activo
 
-V1.1: soporte lockfiles (package-lock.json y go.sum) y feedback de progreso.
+V1.2: SBOM export (SPDX, CycloneDX), modo recursivo (monorepos).
 
 ## Vision
 
@@ -101,7 +102,7 @@ Decisiones de arquitectura:
 
 ## Roadmap
 
-### V1 (actual, completado)
+### V1 (completado)
 
 - Parsers Go y npm.
 - OSV provider.
@@ -110,18 +111,12 @@ Decisiones de arquitectura:
 - Modo offline.
 - CI gate flag.
 
-### V1.1 (siguiente sprint)
+### V1.1 (completado)
 
 - Parser de package-lock.json (versiones exactas).
 - Parser de go.sum (versiones exactas, manejo de hashes).
 - Mensajes de progreso durante scan.
 - Markdown reporter.
-
-### V1.2
-
-- SBOM export: SPDX.
-- SBOM export: CycloneDX.
-- Modo recursivo (monorepos).
 
 ### V2.0
 

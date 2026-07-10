@@ -30,7 +30,7 @@ type Config struct {
 	SeverityThreshold string
 	// FailOnVulnerabilities causes exit code 1 when vulnerabilities are found.
 	FailOnVulnerabilities bool
-	// Format specifies the output format ("table", "json", "json-summary").
+	// Format specifies the output format ("table", "json", "json-summary", etc.).
 	Format string
 	// OutputPath specifies where to write the report ("-" for stdout).
 	OutputPath string
@@ -40,6 +40,8 @@ type Config struct {
 	CacheTTL time.Duration
 	// ToolVersion is the supply-radar version string.
 	ToolVersion string
+	// Recursive enables recursive scanning of subdirectories for monorepos.
+	Recursive bool
 }
 
 // DefaultConfig returns a config with sensible defaults.

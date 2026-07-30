@@ -17,6 +17,7 @@ import (
 	"github.com/nxxo31/supply-radar/internal/reporter"
 	"github.com/nxxo31/supply-radar/internal/reporter/markdown"
 	"github.com/nxxo31/supply-radar/internal/reporter/sarif"
+	"github.com/nxxo31/supply-radar/internal/reporter/sbom"
 	"github.com/nxxo31/supply-radar/internal/reporter/table"
 	"github.com/nxxo31/supply-radar/internal/vulnerability/osv"
 )
@@ -81,19 +82,48 @@ func Scan(cfg Config) (*Result, error) {
 	var allDeps []dependency.Dependency
 	var detectedEcosystem string
 
-	for _, p := range parsers {
-		detected, _ := p.Detect(absPath)
-		if !detected {
-			continue
+	if !cfg.Recursive {
+		// Non-recursive mode: scan only the given directory.
+		for _, p := range parsers {
+			detected, _ := p.Detect(absPath)
+			if !detected {
+				continue
+			}
+			detectedEcosystem = p.Name()
+			deps, err := p.Parse(absPath)
+			if err != nil {
+				// If one parser fails (other than "no deps"), try the next.
+				continue
+			}
+			if deps != nil {
+				allDeps = append(allDeps, deps...)
+			}
 		}
-		detectedEcosystem = p.Name()
-		deps, err := p.Parse(absPath)
+	} else {
+		// Recursive mode: walk the directory tree and scan each directory containing a manifest.
+		err := filepath.WalkDir(absPath, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if !d.IsDir() {
+				return nil
+			}
+			var depsInDir []dependency.Dependency
+			for _, p := range parsers {
+				if detected, _ := p.Detect(path); detected {
+					deps, err := p.Parse(path)
+					if err != nil {
+						// Skip this directory for this parser, but continue with others.
+						continue
+					}
+					depsInDir = append(depsInDir, deps...)
+				}
+			}
+			allDeps = append(allDeps, depsInDir...)
+			return nil
+		})
 		if err != nil {
-			// If one parser fails (other than "no deps"), try the next.
-			continue
-		}
-		if deps != nil {
-			allDeps = append(allDeps, deps...)
+			return nil, err
 		}
 	}
 
@@ -118,10 +148,11 @@ func Scan(cfg Config) (*Result, error) {
 
 	vulnsByDep := make(map[string][]dependency.Vulnerability)
 
-	// Deduplicate deps by ID.
+	// Deduplicate deps by ID and Path (to keep duplicates across subprojects).
 	depMap := make(map[string]dependency.Dependency)
 	for _, d := range allDeps {
-		depMap[d.ID] = d
+		key := d.ID + "@" + d.Path
+		depMap[key] = d
 	}
 
 	uniqueDeps := make([]dependency.Dependency, 0, len(depMap))
@@ -238,6 +269,10 @@ func WriteReport(result dependency.AnalysisResult, format, outputPath string) er
 		rep = markdown.New()
 	case "sarif":
 		rep = sarif.New()
+	case "sbom-spdx":
+		rep = sbom.NewSPDX()
+	case "sbom-cyclonedx":
+		rep = sbom.NewCycloneDX()
 	default:
 		return fmt.Errorf("unsupported format: %s", format)
 	}

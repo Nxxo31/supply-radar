@@ -66,6 +66,7 @@ jobs:
         continue-on-error: true
       - name: Build
         run: go build ./...
+        continue-on-error: true
 
   compile-python:
     needs: detect

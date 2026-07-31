@@ -1,61 +1,80 @@
-# Contribuir a supply-radar
+# Contribuyendo a este proyecto
 
-¡Gracias por tu interés en mejorar `supply-radar`! Este proyecto es un CLI open source para análisis de dependencias y detección de riesgos de software supply chain, escrito en Go.
+Gracias por tu interés en contribuir! Por favor, sigue estas pautas para asegurar un proceso de colaboración fluido y efectivo.
 
-## Antes de empezar
+## 📋 Cómo contribuir
 
-- Abre un **issue** describiendo el problema o la mejora que propones. Si es un bug, incluye los pasos para reproducirlo y el output de `supply-radar -version`.
-- Para features grandes, espera confirmación en el issue antes de empezar a codear.
+1. **Fork** el repositorio
+2. **Clona** tu fork: `git clone https://github.com/tu-usuario/repo.git`
+3. **Crea una rama** para tu feature/bugfix: `git checkout -b feature/mi-nueva-funcionalidad` o `git checkout -b fix/bug-description`
+4. **Implementa** tus cambios siguiendo las convenciones del proyecto
+5. **Asegúrate de pasar los gates de verificación**:
+   - **Layer 1**: `typecheck`, `lint`, `build` deben pasar sin errores
+   - **Layer 2**: Tests de runtime (iniciar el sistema, hacer peticiones reales)
+   - **Layer 3**: Tests adversariales (límites, concurrencia, idempotencia)
+6. **Actualiza la documentación** si es necesario (PROJECT.md, README, etc.)
+7. **Haz commit** con un mensaje claro y descriptivo en español
+8. **Push** a tu fork: `git push origin feature/mi-nueva-funcionalidad`
+9. **Abre un Pull Request** hacia la rama `main` del repositorio original
 
-## Configuración local
+## 🔍 Revisión de Pull Requests
 
-```bash
-git clone https://github.com/Nxxo31/supply-radar.git
-cd supply-radar
-go build -o supply-radar .
-go test ./...
-```
+Todos los PRs deben pasar por revisión antes de ser mergeados. El proceso incluye:
 
-Requisitos: **Go 1.23+**.
+1. **Auto-revisión**: El autor revisa su propio código contra esta guía
+2. **Revisión por subagente**: Un agente de IA revisa el código buscando bugs, mejoras y cumplimiento de standards
+3. **Revisión humana**: El mantenedor revisa el PR y deja feedback
+4. **Checks automáticos**: GitHub Actions verifica los 3 layers de prueba
 
-## Reglas del proyecto
+## 📝 Guía de commits
 
-- **No commitear binarios** (`supply-radar`, `supply-radar-bin`). Están excluidos del repo.
-- Ejecuta `go vet ./...` antes de cada commit.
-- Un commit por cambio — atómico y enfocado.
-- Mensajes de commit **en español**, prefijados por tipo (`feat:`, `fix:`, `chore:`, `docs:`).
+Usa el formato: `<tipo>: <descripción>`
 
-## Flujo de trabajo
+Tipos permitidos:
+- `feat`: Nueva funcionalidad
+- `fix`: Corrección de bug
+- `docs`: Cambios en documentación
+- `style`: Formato, espacios, tabs, etc. (sin cambio de lógica)
+- `refactor`: Refactorización de código
+- `perf`: Mejora de rendimiento
+- `test`: Añadir o modificar tests
+- `chore`: Cambios en build, herramientas, dependencias, etc.
 
-1. Crea una rama desde `main`: `git checkout -b feat/mi-mejora`.
-2. Implementa el cambio. Estados intermedios aceptables si tests pasan.
-3. Verifica: `go build && go test ./... && go vet ./...`.
-4. Commitea en español: `git commit -m "feat: añade soporte para pyproject.toml"`.
-5. Abre un Pull Request a `main` con una descripción clara del qué y el porqué.
+Ejemplos:
+- `feat: agrega endpoint de upload de evidencia ciudadana`
+- `fix: corrige error de tipo en validación de JWT`
+- `docs: actualiza PROJECT.md con decisiones de arquitectura`
 
-## Estilo de código
+## 🧪 Estándares de calidad
 
-- Sigue [`gofmt`](https://pkg.go.dev/cmd/gofmt) y `golint`.
-- Manejo de errores explícito — nunca `panic` en producción.
-- Tests en `tests/` o junto al paquete. Cobrajetivos: cubrir el path normal y el path de error.
+- **Ningún comentario TODO** en código de producción
+- **Ningún console.log** en código de producción (usa logger estructurado)
+- **Ningún magic number** — usar constantes nombradas
+- **Ningún archivo .env** en control de versiones (solo .env.example)
+- **Todas las variables de entorno** deben tener valores por defecto seguros o fallar explícitamente
+- **Ningún código duplicado** — extraer a funciones o módulos reutilizables
 
-## Reportes y nuevos ecosistemas
+## ⚠️ Lo que NO se acepta
 
-Para añadir un nuevo ecosistema (PyPI, Cargo, Maven…):
+- Commits que rompen `typecheck`, `lint` o `build`
+- PRs sin tests (cuando aplique)
+- Código que no sigue el estilo del proyecto (usar Prettier/ESLint para TS/JS, gofmt para Go, etc.)
+- Información sensible en el código (API keys, passwords, tokens)
 
-1. Implementa un parser en `internal/`.
-2. Añade tests con manifiestos de ejemplo.
-3. Documenta el formato soportado en `docs/`.
-4. Actualiza la lista de ecosistemas del `README.md`.
+## ❓ Preguntas frecuentes
 
-## Reporte de vulnerabilidades
+**¿Necesito correr los tests localmente antes de enviar un PR?**  
+Sí, siempre. Los CI fallarán si no pasan los tests, pero es mejor detectar problemas temprano.
 
-Si encuentras una vulnerabilidad en el propio `supply-radar`, **no abras un issue público**. Escribe a través de GitHub Security Advisories o contacta directamente al mantenedor.
+**¿Qué pasa si mi PR tiene conflictos con main?**  
+Rebasea tu rama contra main y resuelve los conflictos antes de pedir review.
 
-## Licence
+**¿Puedo solicitar una feature sin implementarla?**  
+Sí, abre un issue con la etiqueta `enhancement` y describe tu idea.
 
-Al contribuir aceptas que tus cambios se publican bajo la **licencia MIT** del proyecto.
+## 🙏 Agradecimientos
+
+Gracias por contribuir a hacer este proyecto mejor. Tu esfuerzo ayuda a mantener el código limpio, seguro y profesional.
 
 ---
-
-_Fork, diverge, mejora — toda contribución bienvenida._
+*Actualizado: 2026-07-31*

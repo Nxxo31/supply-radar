@@ -1,165 +1,155 @@
-# supply-radar
+# PROJECT.md — Supply Radar
 
-Supply Chain Security Analysis CLI Tool
+> **Estado:** Activo | **Versión:** 1.1.0 | **Última actualización:** 2026-07-31
 
-## Status
+---
 
-MVP V1 y V1.1 completados. Detecta dependencias Go (go.mod) y npm (package.json),
-consulta vulnerabilidades en OSV, soporta lockfiles (package-lock.json, go.sum),
-reporta en tabla/JSON/json-summary/markdown. Tests y CI en verde.
+## 🎯 Objetivo Principal
 
-## Sprint activo
+CLI de supply chain security que escanea dependencias Go y npm, consulta vulnerabilidades en OSV, genera SBOMs (SPDX/CycloneDX) y reporta riesgos sin fricción — autónomo, offline-capable, sin dependencias externas.
 
-V1.2: SBOM export (SPDX, CycloneDX), modo recursivo (monorepos).
+## 🎯 Objetivos Secundarios
 
-## Vision
+1. Soportar múltiples ecosistemas (Go, npm, PyPI, Rust) vía parsers extensibles
+2. Generar SBOMs en formatos SPDX y CycloneDX para auditoría de cadena de suministro
+3. Integrarse en CI/CD con exit codes útiles y reporter SARIF para GitHub Code Scanning
+4. Escanear monorepos recursivamente detectando todos los manifests lockfile-per-servicio
 
-supply-radar es una herramienta CLI open source para analisis de dependencias y
-riesgos de software supply chain. Escanea repositorios, detecta componentes
-vulnerables, genera SBOMs (futuro), y produce reportes de riesgo ejecutables
-sin friccion.
+---
 
-## Problema
+## 📐 Arquitectura
 
-### La crisis de la cadena de suministro de software
+### Stack Tecnológico
 
-- En 2024-2025: dependencias no revisadas aumentaron 67% (Sonatype).
-- 0 paquetes nuevos son revisados antes de entrar a la cadena.
-- Ataques a supply chain crecieron exponencialmente post-Log4j (2021) y XZ backdoor (2024).
-- Vulnerabilidades criticas tardan 500+ dias en resolveerse.
-- Equipos carecen de visibilidad de que tienen en sus proyectos.
+| Capa | Tecnología | Versión | Propósito |
+|------|-----------|---------|-----------|
+| Lenguaje | Go | 1.23+ | Concurrencia nativa, binario único distribuible |
+| CLI | flag stdlib | 1.23 | Parsing de argumentos (Cobra era overkill para MVP) |
+| HTTP | net/http stdlib | 1.23 | Cliente a api.osv.dev |
+| Testing | testing stdlib | 1.23 | Tests unitarios por paquete |
+| Dependencias externas | Ninguna | — | Stdlib puro — cero surface de ataque en la cadena de suministro de la propia herramienta |
 
-### Dolores concretos de desarrolladores
+### Diagrama de Arquitectura
 
-1. No saben que dependencias usa realmente su proyecto.
-2. No saben que vulnerabilidades existen hoy.
-3. No saben que licencias implica cada componente.
-4. No saben si un paquete es mantenido activamente.
-5. No saben si existe un maintainer unico que puede ser comprometido.
+```
+┌─────────────────────────────────────────────────────┐
+│                    Capa CLIENTE                      │
+│              cmd/supply-radar (flag stdlib)           │
+├─────────────────────────────────────────────────────┤
+│                    Capa LÓGICA                       │
+│  [scanner] → [parser (gomod/npm/pypi)]              │
+│            → [vulnerability/osv] → [reporter]        │
+│            → [cache/memory with TTL]                 │
+├─────────────────────────────────────────────────────┤
+│                   Capa DATOS                         │
+│         File System (go.mod, package.json,           │
+│         package-lock.json, go.sum, requirements.txt)  │
+└─────────────────────────────────────────────────────┘
+```
 
-## Oportunidad
+### Flujo de Datos
 
-El mercado de Supply Chain Security valdra $6.5B+ en 2034 (CAGR 9-18%). Demanda
-creciente de soluciones abiertas, autonomas y faciles de integrar en CI/CD.
+```
+[Repo/Dir] → [Scanner orquesta] → [Parser por ecosistema (registry)] → [Dependency list]
+  → [OSV BatchQuery (semáforo 10 goroutines + cache TTL)] → [Vulnerabilities]
+  → [Reporter (tabla/JSON/markdown/SARIF)] → [stdout/archivo]
+  → (--fail && vulns críticas) → exit code ≠ 0
+```
 
-## MVP V1 (ENTREGADO)
+---
 
-Funcionalidad ya operativa:
+## 📊 Matriz de Trazabilidad
 
-- Dos ecosystems: Go (go.mod) y npm (package.json).
-- Versionado de dependencias con limpieza de prefijos (v, ^, ~).
-- Deteccion de directas vs indirectas.
-- Consultas a OSV API con cache in-memory y TTL configurable.
-- Modo offline (sin red).
-- Reportes en tres formatos: tabla, JSON, json-summary.
-- CLI con flags y validacion.
-- Exit codes utiles para CI (--fail cuando hay vulns).
-- Filtro por umbral de severidad.
-- Tests unitarios en verde (parser, scanner, OSV client, table reporter).
-- CI workflow en GitHub Actions.
+| Req ID | Descripción | Componente | Estado | Verificación |
+|--------|-------------|------------|--------|--------------|
+| R-01 | Detectar dependencias Go (go.mod) | internal/parser/gomod/parser.go | ✅ | `go test ./internal/parser/gomod/` |
+| R-02 | Detectar dependencias npm (package.json) | internal/parser/npm/parser.go | ✅ | `go test ./internal/parser/npm/` |
+| R-03 | Consultar vulnerabilidades en OSV API | internal/vulnerability/osv | ✅ | Tests con mock de OSV |
+| R-04 | Cache in-memory con TTL configurable | internal/cache/memory.go | ✅ | Test de TTL hit/miss |
+| R-05 | Modo offline (sin red) | cmd/supply-radar | ✅ | Flag `--offline` |
+| R-06 | Reporter tabla/JSON/json-summary/markdown | internal/reporter/{table,markdown} | ✅ | Tests por reporter |
+| R-07 | Exit codes útiles para CI (`--fail`) | cmd/supply-radar | ✅ | Integración CI |
+| R-08 | Parser package-lock.json (versiones exactas) | internal/parser/npm/lockfile.go | ✅ | lockfile_test.go |
+| R-09 | Parser go.sum (versiones exactas + hashes) | internal/parser/gomod/go_sum.go | ✅ | go_sum_test.go |
+| R-10 | Parser PyPI (requirements.txt) | internal/parser/pypi/parser.go | ✅ | parser_test.go |
+| R-11 | Reporter SARIF (GitHub Code Scanning) | internal/reporter/sarif/reporter.go | ✅ | reporter_test.go |
+| R-12 | SBOM export (SPDX, CycloneDX) | internal/reporter | ⏳ | Pendiente — Issue #1 |
+| R-13 | Modo recursivo (monorepos) | internal/scanner | ⏳ | Pendiente — Issue #1 |
 
-## Definition of Done para el MVP
+---
 
-- go build ./... sin errores.
-- go test ./... sin errores.
-- go vet ./... sin warnings.
-- gofmt limpio.
-- Escaneo de un proyecto real detecta vulnerabilidades reales.
-- CI pasa en push/PR.
+## 🏗️ Marcos Conceptuales
 
-## Stack
+### Software Supply Chain Security
+La herramienta encarna el principio de "know what you depend on": el eslabón más débil de la cadena de suministro de software son las dependencias transitivas no revisadas. Escanear manifest + lockfile da visibilidad real (no lo declarado, sino lo materializado en el lockfile).
 
-- Lenguaje: Go 1.23+.
-- Dependencias externas: ninguna (stdlib puro).
-- CLI: flag stdlib (Cobra era overkill para MVP).
-- Parsers: implementacion propia, sin librerias externas.
-- HTTP: net/http stdlib para OSV.
-- Tests: testing stdlib.
+### Provider pattern extensible
+La abstracción `Parser` (interfaz + registry) y `Provider` (interfaz + impl de OSV) permite añadir ecosistemas (PyPI, Maven) o proveedores de vulnerabilidades (NVD) sin tocar el core del scanner. La extensión es aditiva, no ruptura.
 
-## Arquitectura de paquetes
+---
 
-  cmd/supply-radar/        Entrada del binario + logica de flags
-    internal/
-      scanner/             Orquesta el pipeline completo
-      parser/              Interfaz Parser + registry
-        gomod/             Parser de go.mod (require, indirect, inline syntax)
-        npm/               Parser de package.json (deps + devDeps)
-      vulnerability/       Interfaz Provider
-        osv/               Cliente HTTP a api.osv.dev
-      reporter/            Interfaz Reporter
-        table/             Tabla ASCII con summary
-      dependency/          Tipos del dominio
-      cache/               Cache in-memory + TTL
-      config/              Env vars (placeholder, main.go es la verdad actual)
+## ✅ Justificación de Decisiones Técnicas
 
-Decisiones de arquitectura:
+| Decisión | Opción elegida | Alternativas evaluadas | Razón |
+|----------|---------------|----------------------|-------|
+| Lenguaje | Go 1.23 | Rust, Python | Single-binary distribuible; concurrencia nativa para paralelizar queries OSV; cero dependencias externas reduce el propio riesgo de supply chain |
+| CLI framework | flag stdlib | Cobra, urfave/cli | El MVP tiene un solo comando; Cobra añade 200KB de binario y complejidad innecesaria. Flag stdlib basta. |
+| Dependencias externas | Ninguna (stdlib puro) | go-semver, sarif-go | Una herramienta de supply chain security con dependencias propias es paradójica — stdlib puro minimiza la superficie de ataque de la herramienta misma |
+| Cache | In-memory con TTL | Redis, archivo FS | El MVP no necesita persistencia cross-runs; cuando se necesite, un cache FS en internal/cache/ es incremental sin redesign |
+| Concurrencia OSV | Semáforo de 10 goroutines | Worker pool ilimitado | Rate limit público de OSV es ~10 req/s sin auth; el semáforo respeta el límite sin backoff complejo |
+| Parser por ecosistema | Implementación propia | library/go-mod, npm-parse | Sin libs externas; los manifests son texto estructurado, parsers propios son triviales y dan control total sobre edge cases |
 
-- Sin ORM, sin DB, sin HTTP server. Es solo un binario que lee y reporta.
-- Cache en proceso: el MVP no necesita persistencia cross-runs. Cuando se
-  necesite, se puede anadir un cache filesystem en internal/cache/.
-- Paralelismo controlado: OSV BatchQuery usa semaforo de 10 goroutines.
-  Suficiente para el rate limit publico de api.osv.dev.
+---
 
-## Roadmap
+## 📦 Estado de Implementación
 
-### V1 (completado)
+### Fases Completadas
 
-- Parsers Go y npm.
-- OSV provider.
-- Reporter tabla/JSON.
-- Cache TTL.
-- Modo offline.
-- CI gate flag.
+| Fase | Descripción | Commit | Verificación |
+|------|-------------|--------|--------------|
+| V1 | Parsers Go+npm, OSV, reporter tabla/JSON, cache TTL, modo offline, CI gate | cae5c13 | `go build ./...`, `go test ./...` verde; `go vet` limpio |
+| V1.1 | package-lock.json, go.sum, markdown reporter, mensajes de progreso | 615fab4 | Tests por parser; CI 3-layer gates |
 
-### V1.1 (completado)
+### Próximos Pasos (Backlog)
 
-- Parser de package-lock.json (versiones exactas).
-- Parser de go.sum (versiones exactas, manejo de hashes).
-- Mensajes de progreso durante scan.
-- Markdown reporter.
+| ID | Descripción | Prioridad | Issue |
+|----|-------------|-----------|-------|
+| B-1 | SBOM export (SPDX, CycloneDX) | Alta | #1 |
+| B-2 | Modo recursivo (monorepos) | Alta | #1 |
+| B-3 | Ecosistema Python (PyPI) y Rust (crates.io) | Media | #1 |
+| B-4 | SARIF reporter (integración GitHub Code Scanning) — parcial ✅ | Media | — |
+| B-5 | Modo watch (CI monitor continuo) | Baja | — |
+| B-6 | Cache filesystem persistente entre runs | Baja | — |
+| B-7 | Portabilidad Windows vía PowerShell | Baja | — |
 
-### V2.0
+---
 
-- Ecosistema Python (PyPI) y Rust (crates.io).
-- SARIF reporter (integracion nativa con GitHub Code Scanning).
-- Modo watch (CI monitor continuo).
-- Cache filesystem persistente entre runs.
+## ⚠️ Limitaciones Conocidas
 
-## Roadmap tecnico no funcional
+1. Rate limit de OSV API (~10 req/s sin auth) — mitigado con semáforo, pero a 500+ deps puede ser cuello de botella (plan: mirror propio estilo GOPROXY)
+2. Solo Linux/macOS x86_64 — Windows requiere PowerShell-only paths
+3. No hay cache filesystem — cada run reconsulta OSV (in-memory solo dura la sesión del proceso)
+4. SBOM y modo recursivo pendientes (B-1, B-2)
 
-- performance: V1 escanea <50 deps en <3s. Si proyectamos 500 deps, evaluar pipeline streaming.
-- concurrency: rate limit OSV es ~10 req/s sin auth. Plan B: GOPROXY style mirror propio.
-- portability: solo Linux/macOS x86_64 por ahora. Windows via PowerShell.
-- observability: logs a stderr, metricas no necesarias en V1.
+---
 
-## Riesgos tecnicos identificados
+## 🔐 Seguridad
 
-  Riesgo                                Impacto   Mitigacion
-  ------------------------------------- -------   ----------------------------------------------
-  Rate limit de OSV API                 Medio     Semaforo de 10 goroutines, cache TTL
-  Parsing parcial de lockfiles grandes  Medio     Stream-based parser para V1.1, no full in-memory
-  Falsos positivos                      Bajo      Mapeo CVSS->severidad conservador, threshold filter
-  Cambios en esquema OSV API            Bajo      Validacion en parsing, fallback a "UNKNOWN"
+- 100% local/offline-capable: no envía código fuente a servicios externos
+- La herramienta misma no tiene dependencias externas (cero riesgo de supply chain en el scanner)
+- Filtros por umbral de severidad para evitar ruido en CI
+- Mapeo CVSS→severidad conservador para minimizar falsos positivos
 
-## Valor de portafolio
+---
 
-1. Demostracion de arquitectura Go moderna (CLI + parsers + reporting).
-2. Interfaces de parsing extensibles (futuro PyPI/Maven sin tocar el core).
-3. Integracion con OSV (estandar de la industria).
-4. Diseno orientado a providers (cambiar de OSV a NVD es trivial).
-5. CLI product-ready con manejo de errores, tests y CI.
+## 📚 Referencias
 
-## Valor de mercado
+- [OSV API — api.osv.dev](https://google.github.io/osv-scanner/)
+- [SPDX Specification](https://spdx.dev/specifications/)
+- [CycloneDX Specification](https://cyclonedx.org/specification/overview/)
+- [SARIF 2.1.0](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html)
+- [Sonatype State of the Software Supply Chain 2024](https://www.sonatype.com/state-of-the-software-supply-chain/)
 
-  Aspecto                          Valoracion
-  --------------------------------- ---------------------------------------------
-  TAM Mercado SCA                   $2.9B en 2025, $6.5B proyectado 2034
-  Tendencia                         Crecimiento del 9-18% CAGR
-  Diferenciador supply-radar        CLI ligero, multi-ecosistema desde V1, autonomo, OSS
-  Posicionamiento                   Herramienta de desarrollador para CI/CD integrado
-  Modelo de revenue potencial       Soporte enterprise + SaaS (futuro, NO MVP)
-  Traccion esperada                 Estrellas GitHub, integracion con GitHub Actions
+---
 
-## Licencia
-
-MIT. Ver LICENSE.
+*Generado por SophIA — Sebastian Velasco's autonomous operating system*

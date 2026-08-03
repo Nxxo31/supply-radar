@@ -1,0 +1,43 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-08-03T09:09:28Z",
+    "tools": [
+      {
+        "vendor": "supply-radar",
+        "name": "supply-radar",
+        "version": "v0.1.0"
+      }
+    ],
+    "component": {
+      "name": "tmpc4ff20zt",
+      "type": "application",
+      "bom-ref": "Component-tmpc4ff20zt"
+    }
+  },
+  "components": [
+    {
+      "name": "github.com/stretchr/testify",
+      "version": "1.8.4",
+      "type": "library",
+      "bom-ref": "Component-go:github.com/stretchr/testify@1.8.4",
+      "licenses": [
+        {
+          "license": {}
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "comment": "Source repository"
+        },
+        {
+          "type": "purl",
+          "url": "pkg:go/github.com/stretchr/testify@1.8.4"
+        }
+      ]
+    }
+  ]
+}

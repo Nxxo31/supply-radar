@@ -80,6 +80,11 @@ func Scan(cfg Config) (*Result, error) {
 	}
 
 	var allDeps []dependency.Dependency
+	// detectedEcosystems records every ecosystem discovered across the scan.
+	// In non-recursive mode this collapses to a single ecosystem at the root;
+	// in recursive mode it captures the union of ecosystems across all subprojects
+	// (a monorepo commonly mixes go-mod, npm and pypi manifests per service).
+	detectedEcosystems := make(map[string]struct{})
 	var detectedEcosystem string
 
 	if !cfg.Recursive {
@@ -89,6 +94,7 @@ func Scan(cfg Config) (*Result, error) {
 			if !detected {
 				continue
 			}
+			detectedEcosystems[p.Name()] = struct{}{}
 			detectedEcosystem = p.Name()
 			deps, err := p.Parse(absPath)
 			if err != nil {
@@ -100,19 +106,33 @@ func Scan(cfg Config) (*Result, error) {
 			}
 		}
 	} else {
-		// Recursive mode: walk the directory tree and scan each directory containing a manifest.
-		err := filepath.WalkDir(absPath, func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				return err
+		// Recursive mode: walk the directory tree and scan every directory
+		// that contains a manifest. We prune dependency vendor directories
+		// (node_modules, vendor, .git, etc.) so we do not re-scan the
+		// universe of transitive deps — we want the manifests the user
+		// actually owns per service, not the contents of every lockfile
+		// shipped inside third-party packages.
+		err := filepath.WalkDir(absPath, func(path string, d os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
 			}
 			if !d.IsDir() {
 				return nil
 			}
+			base := d.Name()
+			// Prune directories that contain their own dependency manifests
+			// we do not want to treat as first-class subprojects. Returning
+			// filepath.SkipDir avoids descending into potentially huge trees
+			// (node_modules alone can contain thousands of nested manifests).
+			if shouldSkipDir(base) {
+				return filepath.SkipDir
+			}
 			var depsInDir []dependency.Dependency
 			for _, p := range parsers {
 				if detected, _ := p.Detect(path); detected {
-					deps, err := p.Parse(path)
-					if err != nil {
+					detectedEcosystems[p.Name()] = struct{}{}
+					deps, pErr := p.Parse(path)
+					if pErr != nil {
 						// Skip this directory for this parser, but continue with others.
 						continue
 					}
@@ -126,6 +146,11 @@ func Scan(cfg Config) (*Result, error) {
 			return nil, err
 		}
 	}
+
+	// Resolve the canonical ecosystem label: in non-recursive mode this is the
+	// single detected ecosystem. In recursive mode we report the union — "multi"
+	// when more than one ecosystem was found, otherwise the single ecosystem.
+	detectedEcosystem = resolveEcosystemLabel(detectedEcosystems, cfg.Recursive, detectedEcosystem)
 
 	if len(allDeps) == 0 {
 		// Check if any parser detected a manifest (to give better diagnostic).
@@ -352,4 +377,58 @@ func severityLeq(sev, threshold string) bool {
 		return true
 	}
 	return s1 <= s2
+}
+
+// shouldSkipDir reports whether a directory entry should be pruned during
+// recursive scanning. These are well-known directory names that either hold
+// transitive dependencies (re-scanning them duplicates work and risks picking
+// up vendored manifests the user does not own) or are pure metadata stores.
+//
+// Pruning node_modules is especially important: a typical install contains
+// thousands of nested package.json files, none of them representing the
+// project being scanned. The same applies to Go's vendor/ trees. VCS metadata
+// (".git", ".hg", ".svn") contains no manifests worth scanning and is hidden
+// by convention. "dist", "build", and "target" are conventional output
+// directories that may contain generated manifests.
+func shouldSkipDir(name string) bool {
+	switch name {
+	case "node_modules", "vendor":
+		return true
+	case ".git", ".hg", ".svn":
+		return true
+	case "dist", "build", "target", ".next", ".cache":
+		return true
+	}
+	return false
+}
+
+// resolveEcosystemLabel collapses a set of detected ecosystems into a single
+// downstream-friendly label. In non-recursive mode the caller already set
+// detectedEcosystem to the single match; we honour it. In recursive mode we
+// report "multi" when more than one ecosystem appears (typical of polyglot
+// monorepos with go-mod/npm/pypi services side by side), the lone ecosystem
+// when only one is present, and whatever the caller passed through otherwise.
+func resolveEcosystemLabel(found map[string]struct{}, recursive bool, fallback string) string {
+	if !recursive {
+		// Non-recursive: the loop above set the single detected ecosystem already.
+		if fallback != "" {
+			return fallback
+		}
+		// Fall back to the first (only) ecosystem in the set if fallback was empty.
+		for eco := range found {
+			return eco
+		}
+		return ""
+	}
+	switch len(found) {
+	case 0:
+		return ""
+	case 1:
+		for eco := range found {
+			return eco
+		}
+		return "" // unreachable; satisfies the compiler
+	default:
+		return "multi"
+	}
 }

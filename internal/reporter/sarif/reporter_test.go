@@ -43,14 +43,161 @@ func TestReporter_Generate_EmptyVulns(t *testing.T) {
 	if !strings.Contains(out, "$schema") {
 		t.Error("Output should contain $schema field")
 	}
-	if !strings.Contains(out, "sarif-schema-2.1.0.json") {
-		t.Error("Output should reference SARIF 2.1.0 schema")
+	// The canonical SARIF 2.1.0 schema location is schemastore.org — the
+	// legacy oasis-tcs master/Schemata URL was broken by a branch rename
+	// (oasis-tcs/sarif-spec#646) and GitHub Code Scanning resolves against
+	// schemastore.org. Both URLs contain "sarif" + "2.1.0"; assert on the
+	// canonical identifier fragments rather than a brittle full-URL match.
+	if !strings.Contains(out, "sarif-2.1.0.json") {
+		t.Error("Output should reference the SARIF 2.1.0 schema (sarif-2.1.0.json)")
 	}
 	if !strings.Contains(out, "supply-radar") {
 		t.Error("Output should mention supply-radar")
 	}
-	if !strings.Contains(out, "\"version\": \"2.1.0\"") {
+	if !strings.Contains(out, `"version": "2.1.0"`) {
 		t.Error("Output should contain SARIF version 2.1.0")
+	}
+}
+
+// TestReporter_Generate_EmptyVulns_OmitsRulesAndResults asserts that when the
+// analysis finds no vulnerabilities, the SARIF output omits the "rules"
+// field entirely (via omitempty on a nil slice) rather than serialising an
+// empty array. This matches what GitHub Code Scanning expects; emitting
+// "rules": [] triggers a schema-validation warning.
+func TestReporter_Generate_EmptyVulns_OmitsRulesAndResults(t *testing.T) {
+	r := New()
+	result := dependency.AnalysisResult{
+		Project: dependency.Project{
+			Name:      "test-project",
+			Path:      "/tmp/test",
+			Ecosystem: "npm",
+		},
+		Dependencies:    []dependency.Dependency{},
+		Vulnerabilities: map[string][]dependency.Vulnerability{},
+		Summary:         dependency.RiskSummary{TotalDependencies: 0},
+		RiskScore:       0,
+		Timestamp:       time.Now(),
+		Duration:        0,
+		ToolVersion:     "v0.1.0",
+	}
+
+	var buf bytes.Buffer
+	if err := r.Generate(result, &buf); err != nil {
+		t.Fatalf("Generate failed: %v", err)
+	}
+
+	var parsed struct {
+		Runs []struct {
+			Tool struct {
+				Driver struct {
+					Rules []json.RawMessage `json:"rules"`
+				} `json:"driver"`
+			} `json:"tool"`
+			Results          []json.RawMessage        `json:"results"`
+			Invocations      []json.RawMessage        `json:"invocations"`
+			AutomationDetails *struct {
+				ID       string `json:"id"`
+				Category string `json:"category"`
+			} `json:"automationDetails"`
+		} `json:"runs"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &parsed); err != nil {
+		t.Fatalf("Output is not valid JSON: %v\nOutput: %s", err, buf.String())
+	}
+	if len(parsed.Runs) != 1 {
+		t.Fatalf("Expected 1 run, got %d", len(parsed.Runs))
+	}
+	if len(parsed.Runs[0].Tool.Driver.Rules) != 0 {
+		t.Errorf("Empty-vuln run should emit no rules, got %d", len(parsed.Runs[0].Tool.Driver.Rules))
+	}
+	if len(parsed.Runs[0].Results) != 0 {
+		t.Errorf("Empty-vuln run should emit no results, got %d", len(parsed.Runs[0].Results))
+	}
+}
+
+// TestReporter_InvocationsAndAutomationDetails verifies the run includes the
+// two pieces of metadata GitHub Code Scanning needs: an invocation with
+// endTimeUtc and executionSuccessful, and an automationDetails with the
+// supply-radar run category. Without these the SARIF uploads but the alert
+// run appears "unfinished" in the GitHub UI.
+func TestReporter_InvocationsAndAutomationDetails(t *testing.T) {
+	r := New()
+	result := dependency.AnalysisResult{
+		Project: dependency.Project{Name: "test", Path: "/tmp"},
+		Dependencies: []dependency.Dependency{
+			{ID: "test:1", Name: "test", Version: "1.0.0", Ecosystem: "npm", Path: "/tmp/package.json"},
+		},
+		Vulnerabilities: map[string][]dependency.Vulnerability{
+			"test:1": {{ID: "TEST-1", Title: "Vuln", Severity: "HIGH", CVSS: 7.5}},
+		},
+		ToolVersion: "v1.0.0",
+		Timestamp:   time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC),
+		Duration:    250 * time.Millisecond,
+	}
+
+	var buf bytes.Buffer
+	if err := r.Generate(result, &buf); err != nil {
+		t.Fatalf("Generate failed: %v", err)
+	}
+
+	var parsed struct {
+		Runs []struct {
+			Invocations []struct {
+				StartTimeUTC        string `json:"startTimeUtc"`
+				EndTimeUTC          string `json:"endTimeUtc"`
+				ExecutionSuccessful bool   `json:"executionSuccessful"`
+			} `json:"invocations"`
+			AutomationDetails *struct {
+				ID       string `json:"id"`
+				Category string `json:"category"`
+			} `json:"automationDetails"`
+		} `json:"runs"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &parsed); err != nil {
+		t.Fatalf("Invalid JSON: %v", err)
+	}
+	if len(parsed.Runs[0].Invocations) != 1 {
+		t.Fatalf("Expected exactly one invocation, got %d", len(parsed.Runs[0].Invocations))
+	}
+	inv := parsed.Runs[0].Invocations[0]
+	if !inv.ExecutionSuccessful {
+		t.Error("Invocation should report executionSuccessful=true")
+	}
+	if inv.StartTimeUTC != "2026-01-01T12:00:00Z" {
+		t.Errorf("Expected startTimeUtc 2026-01-01T12:00:00Z, got %q", inv.StartTimeUTC)
+	}
+	if inv.EndTimeUTC != "2026-01-01T12:00:00.25Z" {
+		t.Errorf("Expected endTimeUtc 2026-01-01T12:00:00.25Z (start+250ms), got %q", inv.EndTimeUTC)
+	}
+	if parsed.Runs[0].AutomationDetails == nil {
+		t.Fatal("automationDetails must be present")
+	}
+	if got, want := parsed.Runs[0].AutomationDetails.Category, "supply-radar/scan"; got != want {
+		t.Errorf("automationDetails.category = %q, want %q", got, want)
+	}
+	if !strings.HasPrefix(parsed.Runs[0].AutomationDetails.ID, "supply-radar/") {
+		t.Errorf("automationDetails.id should be prefixed with 'supply-radar/', got %q", parsed.Runs[0].AutomationDetails.ID)
+	}
+}
+
+// TestReporter_ZeroTimestampFallback confirms formatRFC3339 emits a valid
+// RFC 3339 UTC string even when the analysis result has a zero timestamp
+// (e.g. constructed in unit tests that omit time.Now()), so the SARIF output
+// never violates the spec.
+func TestReporter_ZeroTimestampFallback(t *testing.T) {
+	r := New()
+	result := dependency.AnalysisResult{
+		Project: dependency.Project{Name: "zero-time-test", Path: "/tmp"},
+		// Zero Timestamp + Zero Duration
+	}
+
+	var buf bytes.Buffer
+	if err := r.Generate(result, &buf); err != nil {
+		t.Fatalf("Generate failed: %v", err)
+	}
+
+	if !strings.Contains(buf.String(), "1970-01-01T00:00:00Z") {
+		t.Error("Zero timestamp should fall back to the Unix epoch RFC3339 string")
 	}
 }
 

@@ -1,0 +1,9 @@
+{
+  "name": "web-frontend",
+  "version": "1.0.0",
+  "description": "Frontend service in the monorepo",
+  "dependencies": {
+    "express": "^4.18.0",
+    "lodash": "^4.17.21"
+  }
+}

@@ -9,6 +9,7 @@ import (
 	"io"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/nxxo31/supply-radar/internal/dependency"
 )
@@ -43,8 +44,10 @@ type sarifReport struct {
 }
 
 type run struct {
-	Tool    tool          `json:"tool"`
-	Results []sarifResult `json:"results"`
+	Tool             tool          `json:"tool"`
+	Results          []sarifResult `json:"results"`
+	Invocations      []invocation  `json:"invocations,omitempty"`
+	AutomationDetails *automationDetails `json:"automationDetails,omitempty"`
 }
 
 type tool struct {
@@ -52,11 +55,11 @@ type tool struct {
 }
 
 type driver struct {
-	Name            string `json:"name"`
-	Version         string `json:"version"`
-	InformationURI  string `json:"informationUri,omitempty"`
-	SemanticVersion string `json:"semanticVersion,omitempty"`
-	Rules           []rule `json:"rules,omitempty"`
+	Name            string  `json:"name"`
+	Version         string  `json:"version"`
+	InformationURI  string  `json:"informationUri,omitempty"`
+	SemanticVersion string  `json:"semanticVersion,omitempty"`
+	Rules           []rule  `json:"rules,omitempty"`
 }
 
 type rule struct {
@@ -121,7 +124,40 @@ type change struct {
 	Value            string           `json:"value"`
 }
 
+// invocation records how the tool was invoked for this run. GitHub Code
+// Scanning uses invocation.endTimeUtc and executionSuccessful to deduplicate
+// reruns and to display run metadata in the alert timeline.
+type invocation struct {
+	AutomationID       string  `json:"automationId,omitempty"`
+	StartTimeUTC       string  `json:"startTimeUtc,omitempty"`
+	EndTimeUTC         string  `json:"endTimeUtc,omitempty"`
+	ExecutionSuccessful bool    `json:"executionSuccessful"`
+	CommandLine        string  `json:"commandLine,omitempty"`
+	WorkingDirectory   string  `json:"workingDirectory,omitempty"`
+	ToolExecutionURL   string  `json:"toolExecutionUri,omitempty"`
+}
+
+// automationDetails identifies the run category — GitHub uses this to group
+// alerts from the same workflow across different commits/PRs.
+type automationDetails struct {
+	ID      string `json:"id"`
+	GUID    string `json:"guid,omitempty"`
+	Category string `json:"category,omitempty"`
+}
+
 // --- Build logic ---
+
+// schemaSARIF210 is the canonical URL for the SARIF 2.1.0 JSON schema.
+// We use the schemastore.org URL because it is the one GitHub Code Scanning
+// resolves for validation; the legacy oasis-tcs master/Schemata path was
+// broken by a branch rename (oasis-tcs/sarif-spec#646).
+const schemaSARIF210 = "https://json.schemastore.org/sarif-2.1.0.json"
+
+// runCategory is the automationDetails.category GitHub Code Scanning uses to
+// group alert instances across reruns of the same workflow. supply-radar is
+// a CLI scanner, so a stable category lets GitHub correlate successive scans
+// of the same repository.
+const runCategory = "supply-radar/scan"
 
 func buildSARIF(result dependency.AnalysisResult) *sarifReport {
 	sevToLevel := map[string]string{
@@ -132,9 +168,11 @@ func buildSARIF(result dependency.AnalysisResult) *sarifReport {
 		"UNKNOWN":  "note",
 	}
 
-	// Collect unique rules.
+	// Collect unique rules. We keep the rules slice nil when no vulns are
+	// reported so the JSON output omits "rules" entirely (omitempty), which
+	// makes the empty-vuln case match what GitHub Code Scanning expects.
 	ruleMap := make(map[string]int) // ruleID -> index
-	rules := make([]rule, 0)
+	var rules []rule               // stays nil if we never append
 	ruleOrder := make([]string, 0)
 
 	for _, vulns := range result.Vulnerabilities {
@@ -149,22 +187,25 @@ func buildSARIF(result dependency.AnalysisResult) *sarifReport {
 					level = "warning"
 				}
 
-				rule := rule{
+				r := rule{
 					ID:               v.ID,
 					Name:             sanitizeRuleName(v.Title),
 					ShortDescription: message{Text: v.Title},
 					FullDescription:  message{Text: v.Description},
 					DefaultRuleLevel: level,
 				}
-				rule.Properties.Tags = []string{"security", "supply-chain"}
-				rule.Properties.Severity = cvssToSeverityString(v.CVSS)
-				rules = append(rules, rule)
+				r.Properties.Tags = []string{"security", "supply-chain"}
+				r.Properties.Severity = cvssToSeverityString(v.CVSS)
+				rules = append(rules, r)
 			}
 		}
 	}
+	_ = ruleOrder // ordered stable via rules slice
 
-	// Build results.
-	results := make([]sarifResult, 0)
+	// Build results. Same nil-slice trick: emits `"results": null` when empty,
+	// matching the SARIF schema which explicitly allows an empty array (so this
+	// is a stylistic choice, not a correctness requirement).
+	var results []sarifResult
 	for depID, vulns := range result.Vulnerabilities {
 		for _, v := range vulns {
 			// Look up dependency metadata (including version) from the dependencies list.
@@ -187,7 +228,7 @@ func buildSARIF(result dependency.AnalysisResult) *sarifReport {
 				level = "warning"
 			}
 
-			sarifResult := sarifResult{
+			sr := sarifResult{
 				RuleID:    v.ID,
 				RuleIndex: idx,
 				Level:     level,
@@ -204,7 +245,7 @@ func buildSARIF(result dependency.AnalysisResult) *sarifReport {
 			}
 
 			if v.FixedIn != "" {
-				sarifResult.Fix = &fix{
+				sr.Fix = &fix{
 					Description: message{
 						Text: fmt.Sprintf("Upgrade %s to version %s or later to resolve %s",
 							depName, v.FixedIn, v.ID),
@@ -219,15 +260,26 @@ func buildSARIF(result dependency.AnalysisResult) *sarifReport {
 				}
 			}
 
-			results = append(results, sarifResult)
+			results = append(results, sr)
 		}
 	}
 
 	// Sort results by severity (error > warning > note).
 	results = sortResultsBySeverity(results)
 
+	// Build invocation metadata. GitHub Code Scanning requires an invocation
+	// with endTimeUtc and executionSuccessful to display run provenance; without
+	// it the SARIF upload succeeds but the run appears "unfinished" in the UI.
+	runInvocations := []invocation{
+		{
+			StartTimeUTC:       formatRFC3339(result.Timestamp),
+			EndTimeUTC:         formatRFC3339(result.Timestamp.Add(result.Duration)),
+			ExecutionSuccessful: true,
+		},
+	}
+
 	return &sarifReport{
-		Schema:  "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+		Schema:  schemaSARIF210,
 		Version: "2.1.0",
 		Runs: []run{
 			{
@@ -239,7 +291,9 @@ func buildSARIF(result dependency.AnalysisResult) *sarifReport {
 						Rules:          rules,
 					},
 				},
-				Results: results,
+				Results:           results,
+				Invocations:       runInvocations,
+				AutomationDetails: &automationDetails{ID: "supply-radar/" + result.ToolVersion, Category: runCategory},
 			},
 		},
 	}
@@ -295,4 +349,18 @@ func cvssToSeverityString(cvss float64) string {
 	default:
 		return "0.0"
 	}
+}
+
+// formatRFC3339 emits a SARIF-compliant RFC 3339 UTC timestamp. SARIF 2.1.0
+// expects UTC formatted per RFC 3339 with a "Z" suffix; we use a zero-time
+// fallback ("1970-01-01T00:00:00Z") so nil-timestamp analysis results (e.g.
+// constructed directly in tests) still emit a valid value rather than an
+// empty string the spec rejects. We use RFC3339Nano to preserve sub-second
+// precision for short scans, which is valid RFC 3339 and matches what GitHub
+// Code Scanning's own CLI emits.
+func formatRFC3339(t time.Time) string {
+	if t.IsZero() {
+		return "1970-01-01T00:00:00Z"
+	}
+	return t.UTC().Format(time.RFC3339Nano)
 }

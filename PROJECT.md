@@ -1,6 +1,6 @@
 # PROJECT.md — Supply Radar
 
-> **Estado:** Activo | **Versión:** 1.1.0 | **Última actualización:** 2026-07-31
+> **Estado:** Activo | **Versión:** 1.2.0 | **Última actualización:** 2026-08-04
 
 ---
 
@@ -73,8 +73,8 @@ CLI de supply chain security que escanea dependencias Go y npm, consulta vulnera
 | R-09 | Parser go.sum (versiones exactas + hashes) | internal/parser/gomod/go_sum.go | ✅ | go_sum_test.go |
 | R-10 | Parser PyPI (requirements.txt) | internal/parser/pypi/parser.go | ✅ | parser_test.go |
 | R-11 | Reporter SARIF (GitHub Code Scanning) | internal/reporter/sarif/reporter.go | ✅ | reporter_test.go |
-| R-12 | SBOM export (SPDX, CycloneDX) | internal/reporter | ⏳ | Pendiente — Issue #1 |
-| R-13 | Modo recursivo (monorepos) | internal/scanner | ⏳ | Pendiente — Issue #1 |
+| R-12 | SBOM export (SPDX, CycloneDX) | internal/reporter/sbom/{spdx,cyclonedx}.go | ✅ | `go test ./internal/reporter/sbom/` |
+| R-13 | Modo recursivo (monorepos) | internal/scanner | ✅ | `go test ./internal/scanner/ -run Recursive` |
 
 ---
 
@@ -109,18 +109,25 @@ La abstracción `Parser` (interfaz + registry) y `Provider` (interfaz + impl de 
 |------|-------------|--------|--------------|
 | V1 | Parsers Go+npm, OSV, reporter tabla/JSON, cache TTL, modo offline, CI gate | cae5c13 | `go build ./...`, `go test ./...` verde; `go vet` limpio |
 | V1.1 | package-lock.json, go.sum, markdown reporter, mensajes de progreso | 615fab4 | Tests por parser; CI 3-layer gates |
+| V1.2 | SBOM export SPDX 2.3 + CycloneDX 1.5, modo recursivo (monorepos), SARIF reporter — PR #5 | 4184f41 | `go test ./...` OK (46 tests); `go vet` limpio; `gitleaks` clean |
 
 ### Próximos Pasos (Backlog)
 
 | ID | Descripción | Prioridad | Issue |
 |----|-------------|-----------|-------|
-| B-1 | SBOM export (SPDX, CycloneDX) | Alta | #1 |
-| B-2 | Modo recursivo (monorepos) | Alta | #1 |
+| B-1 | SBOM export (SPDX, CycloneDX) — ✅ | Alta | #1 |
+| B-2 | Modo recursivo (monorepos) — ✅ | Alta | #1 |
 | B-3 | Ecosistema Python (PyPI) y Rust (crates.io) | Media | #1 |
-| B-4 | SARIF reporter (integración GitHub Code Scanning) — parcial ✅ | Media | — |
+| B-4 | SARIF reporter (integración GitHub Code Scanning) — ✅ | Media | — |
 | B-5 | Modo watch (CI monitor continuo) | Baja | — |
 | B-6 | Cache filesystem persistente entre runs | Baja | — |
 | B-7 | Portabilidad Windows vía PowerShell | Baja | — |
+
+### Histórico de Versiones Recientes
+
+- **v1.2.0 (2026-08-04)** — PR #5 creado (`feat/sbom-export-spdx-cyclonedx` → `main`): SBOM export SPDX 2.3 + CycloneDX 1.5 con info de vuln, modo recursivo para monorepos, SARIF reporter para GitHub Code Scanning. B-1, B-2, B-4 completados. 46 tests verifying. Branch lista para review y merge a main.
+- **v1.2.0 (2026-08-03)** — B-2 modo recursivo para monorepos completado: `filepath.WalkDir` con poda de directorios (`node_modules`, `vendor`, `.git`, etc.), detección multi-ecosistema (etiqueta `"multi"`), dedup por `ID@Path` preservando subproyectos. B-4 SARIF completado: schema URL migrada a `schemastore.org`, `invocations[]` con `startTimeUtc/endTimeUtc/executionSuccessful`, `automationDetails` con `category="supply-radar/scan"`, reglas `null` en caso vacío. Tests: 13 nuevos en `internal/scanner/recursive_test.go` + 3 nuevos en `internal/reporter/sarif/`.
+- **v1.1.0 (2026-07-31)** — SBOM export SPDX 2.3 + CycloneDX 1.5 con info de vuln, package-lock.json y go.sum parsers, markdown reporter.
 
 ---
 
@@ -129,7 +136,7 @@ La abstracción `Parser` (interfaz + registry) y `Provider` (interfaz + impl de 
 1. Rate limit de OSV API (~10 req/s sin auth) — mitigado con semáforo, pero a 500+ deps puede ser cuello de botella (plan: mirror propio estilo GOPROXY)
 2. Solo Linux/macOS x86_64 — Windows requiere PowerShell-only paths
 3. No hay cache filesystem — cada run reconsulta OSV (in-memory solo dura la sesión del proceso)
-4. SBOM y modo recursivo pendientes (B-1, B-2)
+4. El modo recursivo escala bien hasta ~1000 manifests; más allá de eso conviene paralelizar el_walk con un worker pool
 
 ---
 
